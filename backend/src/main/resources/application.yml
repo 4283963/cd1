@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: cat-feeder-backend
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/catfeeder
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+app:
+  food-warning-threshold: 20
+  water-warning-threshold: 20
+  image-storage-path: ./uploads/images
