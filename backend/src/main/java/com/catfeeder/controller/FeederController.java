@@ -1,8 +1,10 @@
 package com.catfeeder.controller;
 
+import com.catfeeder.dto.SupplyFeederDTO;
 import com.catfeeder.entity.Feeder;
 import com.catfeeder.entity.SensorData;
 import com.catfeeder.service.FeederService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -11,6 +13,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+
+@Slf4j
 
 @RestController
 @RequestMapping("/feeders")
@@ -89,5 +93,22 @@ public class FeederController {
         result.put("foodWarningThreshold", feederService.getFoodWarningThreshold());
         result.put("waterWarningThreshold", feederService.getWaterWarningThreshold());
         return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/supply")
+    public ResponseEntity<Map<String, Object>> supplyFeeder(@RequestBody SupplyFeederDTO supplyDTO) {
+        log.info("收到补粮请求: feederCode={}, foodAmount={}, waterAmount={}",
+                supplyDTO.getFeederCode(), supplyDTO.getFoodAmount(), supplyDTO.getWaterAmount());
+
+        try {
+            Map<String, Object> result = feederService.supplyFeeder(supplyDTO);
+            return ResponseEntity.ok(result);
+        } catch (RuntimeException e) {
+            log.error("补粮失败: {}", e.getMessage());
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("success", false);
+            errorResult.put("message", e.getMessage());
+            return ResponseEntity.status(500).body(errorResult);
+        }
     }
 }

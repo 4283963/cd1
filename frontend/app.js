@@ -357,7 +357,168 @@ function renderFeederDetail(feeder, sensorData) {
             </div>
         </div>
         ` : ''}
+
+        <div class="detail-section">
+            <div class="detail-section-title">🔧 志愿者操作</div>
+
+            ${feeder.foodAlert ? `
+            <div style="margin-bottom: 12px;">
+                <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">选择补粮量:</div>
+                <div class="supply-options" id="food-supply-options">
+                    <button class="supply-option-btn" onclick="selectFoodAmount(this, 20)">+20%</button>
+                    <button class="supply-option-btn active" onclick="selectFoodAmount(this, 50)">+50%</button>
+                    <button class="supply-option-btn" onclick="selectFoodAmount(this, 80)">+80%</button>
+                    <button class="supply-option-btn" onclick="selectFoodAmount(this, 100)">加满</button>
+                </div>
+            </div>
+            <button class="supply-btn primary" id="supply-food-btn" onclick="confirmSupplyFood('${feeder.feederCode}')">
+                🥫 确认补粮
+            </button>
+            ` : ''}
+
+            ${feeder.waterAlert ? `
+            <div style="margin-top: ${feeder.foodAlert ? '12px' : '0'};">
+                <button class="supply-btn secondary" onclick="confirmSupplyWater('${feeder.feederCode}')">
+                    💧 补充饮水
+                </button>
+            </div>
+            ` : ''}
+
+            ${!feeder.foodAlert && !feeder.waterAlert ? `
+            <div style="text-align: center; padding: 20px 0; color: var(--text-secondary); font-size: 13px;">
+                ✅ 设备状态正常，无需补充
+            </div>
+            ` : ''}
+        </div>
     `;
+}
+
+let selectedFoodAmount = 50;
+
+function selectFoodAmount(btn, amount) {
+    document.querySelectorAll('#food-supply-options .supply-option-btn').forEach(b => {
+        b.classList.remove('active');
+    });
+    btn.classList.add('active');
+    selectedFoodAmount = amount;
+}
+
+async function confirmSupplyFood(feederCode) {
+    const btn = document.getElementById('supply-food-btn');
+    if (!btn || btn.classList.contains('btn-loading')) {
+        return;
+    }
+
+    const foodAmount = selectedFoodAmount;
+
+    if (!confirm(`确定要为该喂养点补充 ${foodAmount}% 的粮草吗？`)) {
+        return;
+    }
+
+    btn.classList.add('btn-loading');
+    btn.disabled = true;
+    btn.textContent = '提交中...';
+
+    try {
+        const result = await api.supplyFeeder(feederCode, foodAmount, 0, '志愿者');
+
+        if (result && result.success) {
+            showToast('补粮成功！', 'success');
+
+            setTimeout(() => {
+                refreshFeederDetail(feederCode);
+            }, 1000);
+        } else {
+            showToast(result.message || '补粮失败，请重试', 'error');
+            btn.classList.remove('btn-loading');
+            btn.disabled = false;
+            btn.innerHTML = '🥫 确认补粮';
+        }
+    } catch (error) {
+        console.error('补粮失败:', error);
+
+        if (error.isTimeout) {
+            showToast('请求超时，请检查网络后重试', 'error');
+        } else if (error.message && error.message.includes('系统繁忙')) {
+            showToast('系统繁忙，请稍后再试', 'warning');
+        } else {
+            showToast(error.message || '补粮失败，请重试', 'error');
+        }
+
+        btn.classList.remove('btn-loading');
+        btn.disabled = false;
+        btn.innerHTML = '🥫 确认补粮';
+    }
+}
+
+async function confirmSupplyWater(feederCode) {
+    if (!confirm('确定要为该喂养点补充饮水吗？')) {
+        return;
+    }
+
+    showLoading('正在提交...');
+
+    try {
+        const result = await api.supplyFeeder(feederCode, 0, 50, '志愿者');
+
+        hideLoading();
+
+        if (result && result.success) {
+            showToast('补水成功！', 'success');
+
+            setTimeout(() => {
+                refreshFeederDetail(feederCode);
+            }, 1000);
+        } else {
+            showToast(result.message || '补水失败，请重试', 'error');
+        }
+    } catch (error) {
+        hideLoading();
+        console.error('补水失败:', error);
+
+        if (error.isTimeout) {
+            showToast('请求超时，请检查网络后重试', 'error');
+        } else {
+            showToast(error.message || '补水失败，请重试', 'error');
+        }
+    }
+}
+
+async function refreshFeederDetail(feederCode) {
+    try {
+        const [feeder, sensorData] = await Promise.all([
+            api.getFeederByCode(feederCode).catch(() => getMockFeederDetail(feederCode)),
+            api.getFeederSensorData(feederCode).catch(() => ({ data: [] }))
+        ]);
+
+        renderFeederDetail(feeder, sensorData.data || []);
+
+        loadHomePage();
+    } catch (error) {
+        console.error('刷新详情失败:', error);
+    }
+}
+
+function showLoading(text = '加载中...') {
+    const existing = document.querySelector('.loading-overlay');
+    if (existing) {
+        existing.remove();
+    }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'loading-overlay';
+    overlay.innerHTML = `
+        <div class="loading-spinner"></div>
+        <div class="loading-text">${text}</div>
+    `;
+    document.body.appendChild(overlay);
+}
+
+function hideLoading() {
+    const overlay = document.querySelector('.loading-overlay');
+    if (overlay) {
+        overlay.remove();
+    }
 }
 
 async function loadCatsPage() {
@@ -547,15 +708,32 @@ function renderAlertList(alerts) {
 
 async function resolveAlert(id, event) {
     event.stopPropagation();
+
+    if (!confirm('确定要标记该告警为已处理吗？')) {
+        return;
+    }
+
+    showLoading('处理中...');
+
     try {
         await api.resolveAlert(id);
+
+        hideLoading();
+        showToast('告警已处理', 'success');
+
         loadAlertsPage();
         if (currentPage === 'home') {
             loadHomePage();
         }
     } catch (error) {
+        hideLoading();
         console.error('处理告警失败:', error);
-        alert('处理失败，请重试');
+
+        if (error.isTimeout) {
+            showToast('请求超时，请检查网络后重试', 'error');
+        } else {
+            showToast(error.message || '处理失败，请重试', 'error');
+        }
     }
 }
 

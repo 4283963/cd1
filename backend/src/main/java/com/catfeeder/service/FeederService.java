@@ -1,9 +1,12 @@
 package com.catfeeder.service;
 
+import com.catfeeder.dto.SupplyFeederDTO;
 import com.catfeeder.entity.Feeder;
 import com.catfeeder.entity.SensorData;
 import com.catfeeder.repository.FeederRepository;
 import com.catfeeder.repository.SensorDataRepository;
+import com.catfeeder.util.RedisDistributedLock;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -11,11 +14,19 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Service
 public class FeederService {
+
+    private static final String LOCK_KEY_PREFIX = "feeder_supply:";
+    private static final long LOCK_WAIT_TIME = 3000;
+    private static final long LOCK_LEASE_TIME = 10000;
 
     @Autowired
     private FeederRepository feederRepository;
@@ -25,6 +36,9 @@ public class FeederService {
 
     @Autowired
     private AlertService alertService;
+
+    @Autowired
+    private RedisDistributedLock distributedLock;
 
     @Value("${app.food-warning-threshold:20}")
     private int foodWarningThreshold;
@@ -180,5 +194,94 @@ public class FeederService {
 
     public int getWaterWarningThreshold() {
         return waterWarningThreshold;
+    }
+
+    public Map<String, Object> supplyFeeder(SupplyFeederDTO supplyDTO) {
+        String lockKey = LOCK_KEY_PREFIX + supplyDTO.getFeederCode();
+        String lockRequestId = null;
+        Map<String, Object> result = new HashMap<>();
+
+        try {
+            lockRequestId = distributedLock.tryLock(
+                    lockKey,
+                    LOCK_WAIT_TIME,
+                    LOCK_LEASE_TIME,
+                    TimeUnit.MILLISECONDS
+            );
+
+            if (lockRequestId == null) {
+                log.warn("获取补粮锁失败，系统繁忙: feederCode={}", supplyDTO.getFeederCode());
+                throw new RuntimeException("系统繁忙，请稍后再试");
+            }
+
+            log.info("获取补粮锁成功: feederCode={}, requestId={}", supplyDTO.getFeederCode(), lockRequestId);
+
+            return doSupplyFeeder(supplyDTO);
+
+        } finally {
+            if (lockRequestId != null) {
+                boolean released = distributedLock.unlock(lockKey, lockRequestId);
+                log.info("释放补粮锁: feederCode={}, requestId={}, result={}",
+                        supplyDTO.getFeederCode(), lockRequestId, released);
+            }
+        }
+    }
+
+    @Transactional
+    protected Map<String, Object> doSupplyFeeder(SupplyFeederDTO supplyDTO) {
+        Map<String, Object> result = new HashMap<>();
+
+        Feeder feeder = feederRepository.findByFeederCode(supplyDTO.getFeederCode())
+                .orElseThrow(() -> new RuntimeException("喂养机不存在"));
+
+        int oldFoodLevel = feeder.getCurrentFoodLevel() != null ? feeder.getCurrentFoodLevel() : 0;
+        int oldWaterLevel = feeder.getCurrentWaterLevel() != null ? feeder.getCurrentWaterLevel() : 0;
+
+        if (supplyDTO.getFoodAmount() != null && supplyDTO.getFoodAmount() > 0) {
+            int capacity = feeder.getFoodCapacity() != null ? feeder.getFoodCapacity() : 100;
+            int newFoodLevel = Math.min(oldFoodLevel + supplyDTO.getFoodAmount(), capacity);
+            feeder.setCurrentFoodLevel(newFoodLevel);
+            result.put("foodAdded", supplyDTO.getFoodAmount());
+            result.put("foodBefore", oldFoodLevel);
+            result.put("foodAfter", newFoodLevel);
+
+            int foodPercent = calculatePercentage(newFoodLevel, feeder.getFoodCapacity());
+            if (foodPercent >= foodWarningThreshold && feeder.getFoodAlert()) {
+                feeder.setFoodAlert(false);
+                alertService.resolveFeederAlerts(feeder.getFeederCode(), "FOOD_LOW");
+                result.put("foodAlertResolved", true);
+            }
+        }
+
+        if (supplyDTO.getWaterAmount() != null && supplyDTO.getWaterAmount() > 0) {
+            int capacity = feeder.getWaterCapacity() != null ? feeder.getWaterCapacity() : 100;
+            int newWaterLevel = Math.min(oldWaterLevel + supplyDTO.getWaterAmount(), capacity);
+            feeder.setCurrentWaterLevel(newWaterLevel);
+            result.put("waterAdded", supplyDTO.getWaterAmount());
+            result.put("waterBefore", oldWaterLevel);
+            result.put("waterAfter", newWaterLevel);
+
+            int waterPercent = calculatePercentage(newWaterLevel, feeder.getWaterCapacity());
+            if (waterPercent >= waterWarningThreshold && feeder.getWaterAlert()) {
+                feeder.setWaterAlert(false);
+                alertService.resolveFeederAlerts(feeder.getFeederCode(), "WATER_LOW");
+                result.put("waterAlertResolved", true);
+            }
+        }
+
+        feeder.setLastHeartbeat(LocalDateTime.now());
+        feeder.setStatus("online");
+        feederRepository.save(feeder);
+
+        result.put("success", true);
+        result.put("feederCode", feeder.getFeederCode());
+        result.put("feederName", feeder.getName());
+        result.put("operator", supplyDTO.getOperator());
+        result.put("supplyTime", LocalDateTime.now().toString());
+
+        log.info("补粮完成: feederCode={}, foodAdded={}, waterAdded={}",
+                feeder.getFeederCode(), supplyDTO.getFoodAmount(), supplyDTO.getWaterAmount());
+
+        return result;
     }
 }
