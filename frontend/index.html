@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>猫咪喂养管理</title>
+    <link rel="stylesheet" href="styles/app.css">
+</head>
+<body>
+    <div id="app">
+        <div class="page" id="page-home">
+            <header class="app-header">
+                <div class="header-title">
+                    <h1>🐱 猫咪喂养管理</h1>
+                    <p class="subtitle">志愿者管理平台</p>
+                </div>
+            </header>
+
+            <main class="content">
+                <section class="alert-banner" id="alert-banner">
+                    <div class="alert-icon">⚠️</div>
+                    <div class="alert-content">
+                        <span class="alert-text" id="alert-text">加载中...</span>
+                        <span class="alert-count" id="alert-count-badge">0</span>
+                    </div>
+                </section>
+
+                <section class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">🐾</div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="stat-total-cats">--</div>
+                            <div class="stat-label">流浪猫总数</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📸</div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="stat-captures-today">--</div>
+                            <div class="stat-label">今日抓拍</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🆕</div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="stat-new-cats">--</div>
+                            <div class="stat-label">今日新猫</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🏠</div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="stat-total-feeders">--</div>
+                            <div class="stat-label">喂养点</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="section">
+                    <div class="section-header">
+                        <h2>新猫报到</h2>
+                        <span class="section-more" onclick="showPage('cats')">查看全部</span>
+                    </div>
+                    <div class="new-cats-list" id="new-cats-list">
+                        <div class="loading">加载中...</div>
+                    </div>
+                </section>
+
+                <section class="section">
+                    <div class="section-header">
+                        <h2>喂养点状态</h2>
+                        <span class="section-more" onclick="showPage('feeders')">查看全部</span>
+                    </div>
+                    <div class="feeder-list-mini" id="feeder-list-mini">
+                        <div class="loading">加载中...</div>
+                    </div>
+                </section>
+
+                <section class="section">
+                    <div class="section-header">
+                        <h2>来访排行榜</h2>
+                    </div>
+                    <div class="ranking-list" id="ranking-list">
+                        <div class="loading">加载中...</div>
+                    </div>
+                </section>
+            </main>
+        </div>
+
+        <div class="page hidden" id="page-feeders">
+            <header class="app-header with-back">
+                <button class="back-btn" onclick="showPage('home')">←</button>
+                <div class="header-title">
+                    <h1>喂养点管理</h1>
+                </div>
+            </header>
+            <main class="content">
+                <div class="filter-tabs">
+                    <button class="tab-btn active" data-filter="all" onclick="filterFeeders(this, 'all')">全部</button>
+                    <button class="tab-btn" data-filter="alert" onclick="filterFeeders(this, 'alert')">需补充</button>
+                    <button class="tab-btn" data-filter="online" onclick="filterFeeders(this, 'online')">正常</button>
+                </div>
+                <div class="feeder-list" id="feeder-list">
+                    <div class="loading">加载中...</div>
+                </div>
+            </main>
+        </div>
+
+        <div class="page hidden" id="page-feeder-detail">
+            <header class="app-header with-back">
+                <button class="back-btn" onclick="showPage('feeders')">←</button>
+                <div class="header-title">
+                    <h1 id="feeder-detail-name">喂养点详情</h1>
+                </div>
+            </header>
+            <main class="content" id="feeder-detail-content">
+                <div class="loading">加载中...</div>
+            </main>
+        </div>
+
+        <div class="page hidden" id="page-cats">
+            <header class="app-header with-back">
+                <button class="back-btn" onclick="showPage('home')">←</button>
+                <div class="header-title">
+                    <h1>猫咪档案</h1>
+                </div>
+            </header>
+            <main class="content">
+                <div class="filter-tabs">
+                    <button class="tab-btn active" data-filter="all" onclick="filterCats(this, 'all')">全部</button>
+                    <button class="tab-btn" data-filter="new" onclick="filterCats(this, 'new')">新猫</button>
+                    <button class="tab-btn" data-filter="recent" onclick="filterCats(this, 'recent')">最近</button>
+                </div>
+                <div class="cat-grid" id="cat-grid">
+                    <div class="loading">加载中...</div>
+                </div>
+            </main>
+        </div>
+
+        <div class="page hidden" id="page-cat-detail">
+            <header class="app-header with-back">
+                <button class="back-btn" onclick="showPage('cats')">←</button>
+                <div class="header-title">
+                    <h1 id="cat-detail-name">猫咪详情</h1>
+                </div>
+            </header>
+            <main class="content" id="cat-detail-content">
+                <div class="loading">加载中...</div>
+            </main>
+        </div>
+
+        <div class="page hidden" id="page-alerts">
+            <header class="app-header with-back">
+                <button class="back-btn" onclick="showPage('home')">←</button>
+                <div class="header-title">
+                    <h1>告警中心</h1>
+                </div>
+            </header>
+            <main class="content">
+                <div class="filter-tabs">
+                    <button class="tab-btn active" data-filter="active" onclick="filterAlerts(this, 'active')">待处理</button>
+                    <button class="tab-btn" data-filter="all" onclick="filterAlerts(this, 'all')">全部</button>
+                </div>
+                <div class="alert-list" id="alert-list">
+                    <div class="loading">加载中...</div>
+                </div>
+            </main>
+        </div>
+
+        <nav class="bottom-nav">
+            <button class="nav-btn active" data-page="home" onclick="showPage('home')">
+                <span class="nav-icon">🏠</span>
+                <span class="nav-label">首页</span>
+            </button>
+            <button class="nav-btn" data-page="feeders" onclick="showPage('feeders')">
+                <span class="nav-icon">🏠</span>
+                <span class="nav-label">喂养点</span>
+            </button>
+            <button class="nav-btn" data-page="cats" onclick="showPage('cats')">
+                <span class="nav-icon">🐱</span>
+                <span class="nav-label">猫咪</span>
+            </button>
+            <button class="nav-btn" data-page="alerts" onclick="showPage('alerts')">
+                <span class="nav-icon">🔔</span>
+                <span class="nav-badge" id="nav-alert-badge">0</span>
+                <span class="nav-label">告警</span>
+            </button>
+        </nav>
+    </div>
+
+    <script src="api/api.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
