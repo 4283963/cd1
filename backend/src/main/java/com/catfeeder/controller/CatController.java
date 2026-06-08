@@ -2,6 +2,7 @@ package com.catfeeder.controller;
 
 import com.catfeeder.entity.Cat;
 import com.catfeeder.entity.CatCapture;
+import com.catfeeder.service.CatFunProfileService;
 import com.catfeeder.service.CatService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +19,9 @@ public class CatController {
 
     @Autowired
     private CatService catService;
+
+    @Autowired
+    private CatFunProfileService catFunProfileService;
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> getAllCats(
@@ -89,5 +93,16 @@ public class CatController {
         Map<String, Object> result = new HashMap<>();
         result.put("count", count);
         return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/{id}/fun-profile")
+    public ResponseEntity<Map<String, Object>> getFunProfile(@PathVariable Long id) {
+        Optional<Cat> catOpt = catService.getCatById(id);
+        if (catOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Map<String, Object> funProfile = catFunProfileService.generateFunProfile(catOpt.get());
+        return ResponseEntity.ok(funProfile);
     }
 }

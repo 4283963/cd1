@@ -567,18 +567,39 @@ async function showCatDetail(id) {
     document.getElementById('cat-detail-name').textContent = '加载中...';
 
     try {
-        const [cat, captures] = await Promise.all([
+        const [cat, captures, funProfile] = await Promise.all([
             api.getCatById(id).catch(() => getMockCatDetail(id)),
-            api.getCatCaptures(id).catch(() => ({ captures: [] }))
+            api.getCatCaptures(id).catch(() => ({ captures: [] })),
+            api.getCatFunProfile(id).catch(() => getMockFunProfile(id))
         ]);
 
-        renderCatDetail(cat, captures.captures || []);
+        renderCatDetail(cat, captures.captures || [], funProfile);
     } catch (error) {
         console.error('加载猫咪详情失败:', error);
     }
 }
 
-function renderCatDetail(cat, captures) {
+let currentCatId = null;
+let currentFunProfile = null;
+
+async function refreshFunProfile() {
+    if (!currentCatId) return;
+
+    try {
+        const funProfile = await api.getCatFunProfile(currentCatId);
+        currentFunProfile = funProfile;
+        renderFunProfileCard(funProfile);
+        showToast('换了一个新故事～', 'success');
+    } catch (error) {
+        console.error('刷新趣味档案失败:', error);
+        showToast(error.message || '刷新失败，请重试', 'error');
+    }
+}
+
+function renderCatDetail(cat, captures, funProfile) {
+    currentCatId = cat.id;
+    currentFunProfile = funProfile;
+
     document.getElementById('cat-detail-name').textContent = cat.name || '未知猫咪';
 
     const content = document.getElementById('cat-detail-content');
@@ -637,6 +658,10 @@ function renderCatDetail(cat, captures) {
             </div>
         </div>
 
+        <div id="fun-profile-container">
+            ${renderFunProfileCard(funProfile, true)}
+        </div>
+
         ${cat.description ? `
         <div class="detail-section">
             <div class="detail-section-title">📝 简介</div>
@@ -658,6 +683,163 @@ function renderCatDetail(cat, captures) {
         </div>
         ` : ''}
     `;
+}
+
+function renderFunProfileCard(profile, returnHtml = false) {
+    if (!profile) {
+        const html = `
+            <div class="detail-section">
+                <div class="detail-section-title">✨ 趣味档案</div>
+                <div style="text-align: center; padding: 20px; color: var(--text-secondary);">
+                    加载中...
+                </div>
+            </div>
+        `;
+        if (returnHtml) return html;
+        document.getElementById('fun-profile-container').innerHTML = html;
+        return;
+    }
+
+    const stats = profile.stats || {};
+    const tags = profile.tags || [];
+
+    const html = `
+        <div class="detail-section fun-card">
+            <div class="detail-section-title">
+                ✨ 趣味档案
+                <span class="refresh-btn" onclick="refreshFunProfile()" title="换一个">🔄</span>
+            </div>
+
+            <div class="fun-card-header">
+                <div class="fun-name-section">
+                    <div class="fun-name">「${profile.funName}」</div>
+                    <div class="fun-title">${profile.funTitle}</div>
+                </div>
+            </div>
+
+            <div class="fun-tags">
+                ${tags.map(tag => `<span class="fun-tag">${tag}</span>`).join('')}
+            </div>
+
+            <div class="fun-story">
+                <div class="fun-story-title">📖 猫咪传说</div>
+                <div class="fun-story-content">${profile.story ? profile.story.replace(/\n\n/g, '<br><br>') : '暂无故事...'}</div>
+            </div>
+
+            <div class="fun-catchphrase">
+                <span class="quote-mark">"</span>
+                <span class="catchphrase-text">${profile.catchphrase || '喵～'}</span>
+                <span class="quote-mark">"</span>
+            </div>
+
+            <div class="fun-stats-row">
+                <div class="fun-stat-item">
+                    <div class="fun-stat-icon">🍚</div>
+                    <div class="fun-stat-info">
+                        <div class="fun-stat-value">${stats.riceBowlLevel || 0}</div>
+                        <div class="fun-stat-label">干饭等级</div>
+                    </div>
+                </div>
+                <div class="fun-stat-item">
+                    <div class="fun-stat-icon">💕</div>
+                    <div class="fun-stat-info">
+                        <div class="fun-stat-value">${stats.moeValue || 0}</div>
+                        <div class="fun-stat-label">萌力值</div>
+                    </div>
+                </div>
+                <div class="fun-stat-item">
+                    <div class="fun-stat-icon">🌙</div>
+                    <div class="fun-stat-info">
+                        <div class="fun-stat-value">${stats.mysteryValue || 0}</div>
+                        <div class="fun-stat-label">神秘度</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="fun-actions">
+                <button class="fun-btn refresh" onclick="refreshFunProfile()">
+                    🔄 换一个
+                </button>
+                <button class="fun-btn share" onclick="shareFunProfile()">
+                    📤 分享卡片
+                </button>
+            </div>
+        </div>
+    `;
+
+    if (returnHtml) return html;
+    document.getElementById('fun-profile-container').innerHTML = html;
+}
+
+async function shareFunProfile() {
+    if (!currentFunProfile) {
+        showToast('还没有生成趣味档案哦', 'warning');
+        return;
+    }
+
+    const shareText = `🐱 「${currentFunProfile.funName}」- ${currentFunProfile.funTitle}\n\n${currentFunProfile.story}\n\n——「${currentFunProfile.catchphrase}」`;
+
+    if (navigator.share) {
+        try {
+            await navigator.share({
+                title: `${currentFunProfile.funName}的趣味档案`,
+                text: shareText,
+            });
+            return;
+        } catch (err) {
+            if (err.name !== 'AbortError') {
+                console.log('分享失败，使用复制方式:', err);
+            }
+        }
+    }
+
+    try {
+        await navigator.clipboard.writeText(shareText);
+        showToast('已复制到剪贴板，快去分享吧！', 'success');
+    } catch (err) {
+        showShareModal(shareText);
+    }
+}
+
+function showShareModal(text) {
+    const modal = document.createElement('div');
+    modal.className = 'share-modal-overlay';
+    modal.onclick = (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    };
+
+    modal.innerHTML = `
+        <div class="share-modal">
+            <div class="share-modal-title">分享卡片</div>
+            <div class="share-modal-content">${text.replace(/\n/g, '<br>')}</div>
+            <div class="share-modal-actions">
+                <button class="share-modal-btn" onclick="this.closest('.share-modal-overlay').remove()">关闭</button>
+                <button class="share-modal-btn primary" onclick="copyShareText('${text.replace(/'/g, "\\'")}', this)">复制文本</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+}
+
+function copyShareText(text, btn) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+
+    try {
+        document.execCommand('copy');
+        showToast('复制成功！', 'success');
+    } catch (err) {
+        showToast('复制失败，请手动复制', 'error');
+    }
+
+    document.body.removeChild(textarea);
 }
 
 async function loadAlertsPage() {
@@ -957,6 +1139,56 @@ function getMockCatDetail(id) {
     };
 }
 
+function getMockFunProfile(id) {
+    const profiles = [
+        {
+            funName: '黑夜刺客',
+            funTitle: '暗夜游侠 · 夜色中的精灵',
+            personality: 'night_owl',
+            story: '在小区的夜色中，有一只神秘的黑猫悄无声息地穿行。每当午夜钟声敲响，它便化身为"黑夜刺客"，在月光下巡视自己的领地。\n\n据说，它的黑毛在夜里能完美融入阴影，只有那双金色的眼睛会在黑暗中闪烁。它最喜欢凌晨3点准时出现在投喂点，悄咪咪地吃完就走，不留一丝痕迹——只留下空荡荡的饭碗。',
+            catchphrase: '黑夜给了我黑色的毛，我却用它来偷吃猫粮',
+            tags: ['夜猫子', '神秘', '挑食', '独行侠', '月光族'],
+            stats: {
+                riceBowlLevel: 75,
+                moeValue: 85,
+                mysteryValue: 95,
+                daysInCommunity: 128
+            }
+        },
+        {
+            funName: '橘座大人',
+            funTitle: '美食家 · 小区干饭之王',
+            personality: 'foodie',
+            story: '在小区的猫咪江湖中，流传着一个传说——十只橘猫九只胖，还有一只压塌炕。我们的"橘座大人"正是这句话的最佳代言猫。\n\n它不是在吃饭，就是在去吃饭的路上。每天早上7点、中午12点、下午5点、晚上9点，它的身影会准时出现在投喂点。志愿者们都说，这只橘猫的生物钟比闹钟还准。\n\n虽然体型圆润，但橘座大人的性格却异常温柔，是小区里最亲人的猫咪之一。只要有好吃的，它可以让你随便撸。',
+            catchphrase: '世上无难事，只要有猫粮',
+            tags: ['吃货', '亲人', '圆滚滚', '嗜睡', '佛系'],
+            stats: {
+                riceBowlLevel: 99,
+                moeValue: 92,
+                mysteryValue: 30,
+                daysInCommunity: 256
+            }
+        },
+        {
+            funName: '三花公主',
+            funTitle: '花园精灵 · 傲娇小公主',
+            personality: 'shy',
+            story: '在小区的花园深处，住着一位神秘的三花公主。她有着漂亮的三色被毛，就像一幅精心绘制的水彩画。\n\n这位小公主性格有些害羞，总是躲在花丛后面观察人类。只有当周围没人的时候，她才会小心翼翼地走到投喂点吃饭。一旦有风吹草动，她就会立刻消失在灌木丛中。\n\n不过，如果你能耐心地和她建立信任，她会用小脑袋轻轻蹭你的手——那是她表达友好的最高礼仪。',
+            catchphrase: '本公主才不是怕人，只是想保持神秘',
+            tags: ['害羞', '优雅', '小公主', '警惕', '花丛精灵'],
+            stats: {
+                riceBowlLevel: 60,
+                moeValue: 95,
+                mysteryValue: 70,
+                daysInCommunity: 45
+            }
+        }
+    ];
+
+    const index = (id - 1) % profiles.length;
+    return profiles[index];
+}
+
 function getMockRanking() {
     return [
         { rank: 1, catId: 4, name: '奶牛', visitCount: 256, lastSeen: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() },
@@ -964,7 +1196,7 @@ function getMockRanking() {
         { rank: 3, catId: 2, name: '小黑', visitCount: 56, lastSeen: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString() },
         { rank: 4, catId: 5, name: '小灰', visitCount: 34, lastSeen: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString() },
         { rank: 5, catId: 6, name: '小白', visitCount: 15, lastSeen: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString() }
-    };
+    ];
 }
 
 function getMockAlerts() {

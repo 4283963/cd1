@@ -149,6 +149,12 @@ const api = {
         return this.request(`/cats/${id}/captures`);
     },
 
+    async getCatFunProfile(id) {
+        return this.request(`/cats/${id}/fun-profile`, {
+            timeout: 8000
+        });
+    },
+
     async getAlerts(active = true, type = null, days = 7) {
         let url = `/alerts?active=${active}&days=${days}`;
         if (type) {
